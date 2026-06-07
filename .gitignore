@@ -1,0 +1,4 @@
+build/
+*.wasm
+*.cwasm
+fizz-comment-dedupe

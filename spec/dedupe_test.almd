@@ -1,0 +1,41 @@
+import self as dedupe
+import fizz_protocol.comment
+
+local fn mk(id: String) -> comment.Comment =
+  comment.Comment { id: id, user: "u", text: "t", color: none, source: comment.Synthetic }
+
+test "first occurrence passes, repeat is dropped" {
+  let s0 = dedupe.new_state(8)
+  let step1 = dedupe.push(s0, mk("a"))
+  assert_eq(step1.fresh, some(mk("a")))
+  let step2 = dedupe.push(step1.state, mk("a"))
+  assert_eq(step2.fresh, none)
+}
+
+test "distinct ids all pass" {
+  let s0 = dedupe.new_state(8)
+  let step1 = dedupe.push(s0, mk("a"))
+  let step2 = dedupe.push(step1.state, mk("b"))
+  assert_eq(step2.fresh, some(mk("b")))
+}
+
+test "fifo eviction forgets the oldest id beyond the cap" {
+  var state = dedupe.new_state(2)
+  let s1 = dedupe.push(state, mk("a"))
+  let s2 = dedupe.push(s1.state, mk("b"))
+  let s3 = dedupe.push(s2.state, mk("c"))   // "a" を追い出す
+  state = s3.state
+  // 追い出された "a" は再び未出扱い (trade-off)
+  let again = dedupe.push(state, mk("a"))
+  assert_eq(again.fresh, some(mk("a")))
+  // "c" はまだ覚えている
+  let dup = dedupe.push(again.state, mk("c"))
+  assert_eq(dup.fresh, none)
+}
+
+test "cap floor is 1" {
+  let s = dedupe.new_state(0)
+  let step = dedupe.push(s, mk("only"))
+  assert_eq(step.fresh, some(mk("only")))
+  assert_eq(dedupe.push(step.state, mk("only")).fresh, none)
+}

@@ -1,0 +1,36 @@
+// CLI エントリポイント — NDJSON フィルタ。
+// stdin: 1 行 1 コメント (Codec JSON) → stdout: 未出のものだけ。
+//
+//   fizz-youtube-chat-source | fizz-comment-dedupe | ...
+//
+// 不正な行は stderr に警告して読み飛ばす (パイプは止めない)。
+// 終了: EOF (read_line が "" を返したとき)。
+
+import self as dedupe
+import fizz_protocol.comment
+import io
+import env
+
+effect fn main() -> Unit = {
+  let cap = result.unwrap_or(int.parse(string.trim(env.get("FIZZ_DEDUPE_CAP") ?? "")), dedupe.DEFAULT_CAP)
+  var state = dedupe.new_state(cap)
+  var open = true
+  while open {
+    let line = io.read_line()
+    if string.trim(line) == "" then {
+      open = false
+    } else {
+      match comment.comment_from_json(line) {
+        err(e) => eprintln("[dedupe] skipping malformed line: ${e}"),
+        ok(c)  => {
+          let step = dedupe.push(state, c)
+          state = step.state
+          match step.fresh {
+            some(f) => println(comment.comment_to_json(f)),
+            none    => (),
+          }
+        },
+      }
+    }
+  }
+}

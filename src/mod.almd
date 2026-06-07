@@ -1,0 +1,53 @@
+// fizz_comment_dedupe — ID ベースの重複排除フィルタ。
+//
+// 責務 (一行): comment ストリームから既出 ID を落とす。
+//
+// すべてのソース部品はこのフィルタを通してから下流 (classifier / brain /
+// overlay) に入る前提。ソースの再送・再接続・polling の重なりをここで
+// 一手に吸収するので、各ソースは dedupe を実装しない。
+//
+// seen set は FIFO 上限つき (長時間配信のメモリ膨張防止)。上限を超えると
+// 最古の ID から忘れる — 数百件以上前の再送は素通りする trade-off。
+
+import fizz_protocol.comment
+
+let DEFAULT_CAP = 512
+
+type DedupeState = {
+  seen: Set[String],
+  // 挿入順 (FIFO eviction 用)。seen と常に同じ要素を持つ。
+  order: List[String],
+  cap: Int,
+}
+
+fn new_state(cap: Int) -> DedupeState =
+  DedupeState { seen: set.new(), order: [], cap: if cap < 1 then 1 else cap }
+
+type DedupeStep = {
+  state: DedupeState,
+  // 未出のときだけ some — これをそのまま下流へ流す。
+  fresh: Option[comment.Comment],
+}
+
+fn push(state: DedupeState, c: comment.Comment) -> DedupeStep =
+  if set.contains(state.seen, c.id) then
+    DedupeStep { state: state, fresh: none }
+  else {
+    let grown = DedupeState {
+      seen: set.insert(state.seen, c.id),
+      order: state.order + [c.id],
+      cap: state.cap,
+    }
+    DedupeStep { state: evict(grown), fresh: some(c) }
+  }
+
+local fn evict(s: DedupeState) -> DedupeState =
+  if list.len(s.order) <= s.cap then s
+  else {
+    let oldest = list.first(s.order) ?? ""
+    evict(DedupeState {
+      seen: set.remove(s.seen, oldest),
+      order: list.drop(s.order, 1),
+      cap: s.cap,
+    })
+  }

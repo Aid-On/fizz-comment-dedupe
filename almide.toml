@@ -1,0 +1,7 @@
+[package]
+name = "fizz_comment_dedupe"
+version = "0.1.0"
+description = "Fizz comment filter — drop duplicate Comments by id (FIFO-capped seen set), NDJSON in/out"
+
+[dependencies]
+fizz_protocol = { git = "https://github.com/Aid-On/fizz-protocol", tag = "v0.1.1" }
