@@ -12,7 +12,12 @@ import io
 import env
 
 effect fn main() -> Unit = {
-  let cap = result.unwrap_or(int.parse(string.trim(env.get("FIZZ_DEDUPE_CAP") ?? "")), dedupe.DEFAULT_CAP)
+  // 注: result.unwrap_or(int.parse(...), d) は effect fn 内で codegen が
+  // int.parse に auto-? を挿して build が壊れる (almide v0.25)。match で回避。
+  let cap = match int.parse(string.trim(env.get("FIZZ_DEDUPE_CAP") ?? "")) {
+    ok(n)  => n,
+    err(_) => dedupe.DEFAULT_CAP,
+  }
   var state = dedupe.new_state(cap)
   var open = true
   while open {
